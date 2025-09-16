@@ -18,6 +18,8 @@ from ai_edge_torch.generative.quantize import quant_recipe, quant_recipe_utils
 from ai_edge_torch.quantize import quant_config
 from utils_load_model import load_model
 
+import stable_audio_tools
+
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 torch.manual_seed(0)
 DEVICE = torch.device("cpu")
@@ -47,17 +49,24 @@ def get_dit_example_input_tuple(dtype=torch.float):
 
 
 ## ----------------- Utility Functions AutoEncoder -------------------
-def get_autoencoder_module(model):
+def get_autoencoder_decoder_module(model):
     """Get the AutoEncoder module from the AudioGen model."""
-    return AutoEncoderModule(model.pretransform)
+    return AutoEncoderDecoderModule(model.pretransform)
 
+def get_autoencoder_encoder_module(model):
+    """Get the AutoEncoder module from the AudioGen model."""
+    return AutoEncoderEncoderModule(model.pretransform)
 
-def get_autoencoder_example_input(dtype=torch.float):
+def get_autoencoder_decoder_example_input(dtype=torch.float):
     """Get example input for the AutoEncoder module."""
     return (torch.rand((1, 64, 256), dtype=dtype),)
 
+def get_autoencoder_encoder_example_input(dtype=torch.float):
+    """Get example input for the AutoEncoder module."""
+    return (torch.rand((1, 2, 524288), dtype=dtype),)
 
-class AutoEncoderModule(torch.nn.Module):
+
+class AutoEncoderDecoderModule(torch.nn.Module):
     """Wrap the AutoEncoder Module. Takes the AutoEncoder and returns the audio.
     Args:
         autoencoder (torch.nn.Module): The AutoEncoder module.
@@ -65,23 +74,61 @@ class AutoEncoderModule(torch.nn.Module):
         audio (torch.Tensor): The decoded audio tensor.
     """
 
-    def __init__(self, autoencoder):
-        super(AutoEncoderModule, self).__init__()
-        self.autoencoder = autoencoder
+    def __init__(self, audoencoder):
+        super(AutoEncoderDecoderModule, self).__init__()
+        self.audoencoder = audoencoder
 
         # Use float
         self.audoencoder = (
-            self.autoencoder.to(dtype=torch.float).eval().requires_grad_(False)
+            self.audoencoder.to(dtype=torch.float).eval().requires_grad_(False)
         )
 
     def forward(self, sampled: torch.Tensor):
         dtype = torch.float
-        sampled_uncompressed = self.autoencoder.decode(sampled.to(dtype))
+        sampled_uncompressed = self.audoencoder.decode(sampled.to(dtype))
 
         audio = rearrange(sampled_uncompressed, "b d n -> d (b n)")
 
         return audio
 
+def vae_sample_updated(mean, scale):
+    stdev = torch.nn.functional.softplus(scale) + 1e-4
+    var = stdev * stdev
+    logvar = torch.log(var)
+
+    # "randn_like" was causing failures while exporting the model:
+    # latents = torch.randn_like(mean) * stdev + mean
+    rand = torch.randn(mean.size()) 
+    latents = rand * stdev + mean
+
+    kl = (mean * mean + var - logvar - 1).sum(1).mean()
+
+    return latents, kl
+
+class AutoEncoderEncoderModule(torch.nn.Module):
+    """Wrap the AutoEncoder Module. Takes the AutoEncoder and returns the audio.
+    Args:
+        autoencoder (torch.nn.Module): The AutoEncoder module.
+    Returns:
+        audio (torch.Tensor): The decoded audio tensor.
+    """
+
+    def __init__(self, audoencoder):
+        super(AutoEncoderEncoderModule, self).__init__()
+        self.audoencoder = audoencoder
+
+        # Use float
+        self.audoencoder = (
+            self.audoencoder.to(dtype=torch.float).eval().requires_grad_(False)
+        )
+
+        stable_audio_tools.models.bottleneck.vae_sample = vae_sample_updated
+
+    def forward(self, sampled: torch.Tensor):
+        dtype = torch.float
+        sample_compressed = self.audoencoder.encode(sampled.to(dtype))
+
+        return sample_compressed
 
 ## ----------------- Exporting DiT and AutoEncoder to LiteRT format -------------------
 def export_audiogen(args) -> None:
@@ -137,21 +184,38 @@ def export_audiogen(args) -> None:
     edge_model.export("./dit_model.tflite")
     logging.info("DiT model has been saved to %s/dit_model.tflite")
 
-    ## --------- AutoEncoder Model ---------
-    # Load the AutoEncoder
-    logging.info("Starting AutoEncoder Model conversion to LiteRT format...\n")
-    autoencoder = get_autoencoder_module(model)
-    autoencoder = autoencoder.to(dtype).eval().requires_grad_(False)
-    autoencoder_example_input = get_autoencoder_example_input(dtype)
+    ## --------- AutoEncoder Decoder Model ---------
+    # Load the Encoder part of the AutoEncoder
+    logging.info("Starting AutoEncoder Decoder Model conversion to LiteRT format...\n")
+    autoencoder_decoder = get_autoencoder_decoder_module(model)
+    autoencoder_decoder = autoencoder_decoder.to(dtype).eval().requires_grad_(False)
+    autoencoder_decoder_example_input = get_autoencoder_decoder_example_input(dtype)
 
-    # Export the AutoEncoder to LiteRT format
+    # Export the Encoder part of the AutoEncoder to LiteRT format
     edge_model = ai_edge_torch.convert(
-        autoencoder,
-        autoencoder_example_input,
+        autoencoder_decoder,
+        autoencoder_decoder_example_input,
     )
     edge_model.export("./autoencoder_model.tflite")
     logging.info(
         "AutoEncoder model has been saved to %s/autoencoder_model.tflite",
+    )
+
+    ## --------- AutoEncoder Encoder Model ---------
+    # Load the Encoder part of the AutoEncoder
+    logging.info("Starting AutoEncoder Encoder Model conversion to LiteRT format...\n")
+    autoencoder_encoder = get_autoencoder_encoder_module(model)
+    autoencoder_encoder = autoencoder_encoder.to(dtype).eval().requires_grad_(False)
+    autoencoder_encoder_example_input = get_autoencoder_encoder_example_input(dtype)
+
+    # Export the AutoEncoder to LiteRT format
+    edge_model = ai_edge_torch.convert(
+        autoencoder_encoder,
+        autoencoder_encoder_example_input,
+    )
+    edge_model.export("./autoencoder_encoder_model.tflite")
+    logging.info(
+        "AutoEncoder model has been saved to %s/autoencoder_encoder_model.tflite",
     )
 
 
