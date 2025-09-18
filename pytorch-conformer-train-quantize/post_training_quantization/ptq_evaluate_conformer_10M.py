@@ -218,7 +218,7 @@ def main():
 
     # Pre-processing as per the Conformer paper & as how the NN was trained
     mel_transform = MelSpectrogram(
-        sample_rate=16000, n_fft=400, win_length=400, hop_length=160, n_mels=80
+        sample_rate=16000, n_fft=512, win_length=512, hop_length=160, n_mels=80, center=False
     )
 
     dataset = LIBRISPEECH(root=args.root, url=args.dataset, download=True)

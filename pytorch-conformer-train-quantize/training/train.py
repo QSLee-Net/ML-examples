@@ -73,7 +73,7 @@ class AudioPreprocessor:
             self,
             sample_rate: int = 16_000,
             n_mels: int = 80,
-            n_fft: int = 400,
+            n_fft: int = 512,
             hop_length: int = 160,
             freq_mask_param: int = 27,
             time_mask_ratio: float = 0.05,
@@ -92,7 +92,9 @@ class AudioPreprocessor:
             sample_rate=sample_rate,
             n_mels=n_mels,
             n_fft=n_fft,
+            win_length=n_fft,
             hop_length=hop_length,
+            center=False
         )
 
         # SpecAugment ops (iid_masks=True → independent per example)
@@ -280,7 +282,7 @@ def parse_args() -> argparse.Namespace:
     # === data augmentation / front‑end ===
     parser.add_argument("--sample-rate", type=int, default=16_000)
     parser.add_argument("--n-mels", type=int, default=80)
-    parser.add_argument("--n-fft", type=int, default=400)
+    parser.add_argument("--n-fft", type=int, default=512)
     parser.add_argument("--hop-length", type=int, default=160)
     parser.add_argument("--time-mask-ratio", type=float, default=0.05)
     parser.add_argument(
