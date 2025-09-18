@@ -87,7 +87,7 @@ static void print_usage(const char *name) {
         "  -t <num_threads>        Number of CPU threads to use\n"
         "  -s <seed>               (Optional) Random seed for reproducibility. Different seeds generate different audio samples (Default: %zu)\n"
         "  -i <input_audio_path>   (Optional) Add input audio file for style transfer"
-        "  -x <init_noise_level>   (Optional) Hyper parameter to tweak noise level"
+        "  -x <sigma_max>          (Optional) Hyper parameter to tweak noise level"
         "  -l <audio_len_sec>      (Optional) Length of generated audio (Default: %zu s)\n"
         "  -n <num_steps>          (Optional) Number of steps (Default: %zu)\n"
         "  -o <output_file>        (Optional) Output audio file name (Default: <prompt>_<seed>.wav)\n"
@@ -141,8 +141,7 @@ static size_t get_num_elems(const TfLiteIntArray* dims) {
     return x;
 }
 
-static void read_wav(const std::string& path, std::vector<float>& left_ch, std::vector<float>& right_ch)
-{
+static void read_wav(const std::string& path, std::vector<float>& left_ch, std::vector<float>& right_ch) {
     // You can use this command to convert the file to the expected format:
     // ffmpeg -i input_audio.mp3 -ar 44100 -ac 2 -c:a pcm_f32le -f wav output.wav
 
@@ -167,14 +166,13 @@ static void read_wav(const std::string& path, std::vector<float>& left_ch, std::
     input_stream.read(reinterpret_cast<char*>(&riff_size), 4);
     AUDIOGEN_CHECK(bool(riff_size));
     input_stream.read(wave, 4);
-    if(std::string(riff, 4) != "RIFF" || std::string(wave, 4) != "WAVE")
-    {
+    if(std::string(riff, 4) != "RIFF" || std::string(wave, 4) != "WAVE") {
         fprintf(stderr,
             "BAD file, or unsupported format, use this ffmpeg command to convert your file:\n"
             "ffmpeg -i input_audio.mp3 -ar 44100 -ac 2 -c:a pcm_f32le -f wav output.wav\n\n");
         exit(EXIT_FAILURE);
     }
-    
+
     input_stream.read(fmt, 4);
     AUDIOGEN_CHECK(std::string(fmt, 4) == "fmt ");
     input_stream.read(reinterpret_cast<char*>(&fmt_chunk_sz), 4);
@@ -190,8 +188,7 @@ static void read_wav(const std::string& path, std::vector<float>& left_ch, std::
     if (!(audio_format == wave_format_ieee_float || audio_format == wave_format_pcm || audio_format == wave_format_extensible) ||
         audio_num_channels != k_audio_num_channels ||
         audio_sr != k_audio_sr ||
-        audio_bits_per_sample != k_bits_per_sample)
-    {
+        audio_bits_per_sample != k_bits_per_sample) {
         fprintf(stderr,
         "Unsupported WAV format (need 44.1kHz, stereo, 32-bit float), use this ffmpeg command to convert your file:\n"
         "ffmpeg -i input_audio.mp3 -ar 44100 -ac 2 -c:a pcm_f32le -f wav output.wav\n\n");
@@ -239,60 +236,32 @@ static void read_wav(const std::string& path, std::vector<float>& left_ch, std::
     // We need to unpack the data into two channels, as this is the expected input shape to the encoder
     left_ch.resize(num_frames);
     right_ch.resize(num_frames);
-    for(int i = 0, j = 0; i < num_frames; ++i, j+=2)
-    {
-        left_ch[i] = data_chunk[j + 0];
-        right_ch[i] = data_chunk[j + 1];
+    for(int i = 0; i < num_frames; ++i) {
+        left_ch[i] = data_chunk[i * 2 + 0];
+        right_ch[i] = data_chunk[i * 2 + 1];
     }
 }
 
-static void pack_audio_input(std::vector<float>& left_ch, std::vector<float>& right_ch, std::vector<float>& packed) {
+static void prepare_encoder_input(const std::vector<float>& left_ch, const std::vector<float>& right_ch, float* packed, const size_t audio_input_dim0) {
 
     AUDIOGEN_CHECK(left_ch.size() == right_ch.size());
-    packed.resize(left_ch.size() * k_audio_num_channels);
-    const int32_t num_frames = left_ch.size();
+    const int32_t num_frames = audio_input_dim0 / 2;
 
-    for(int i = 0; i < num_frames; ++i)
-    {
+    for(int i = 0; i < num_frames; ++i) {
         packed[i]            = left_ch[i];
         packed[num_frames+i] = right_ch[i];
     }
 }
 
-static void encode_audio(std::vector<float>& encoded_audio, std::string audio_input_path, std::string encoder_path, size_t num_threads)
-{
-    constexpr int32_t autoencoder_max_input_per_channel = 524288;
-    
-    long start_encoder, end_encoder = 0;
+static void encode_audio(const std::string& audio_input_path, const std::string& encoder_model_path, std::vector<float>& encoded_audio, size_t num_threads) {
+
     std::vector<float> packed;
     std::vector<float> left_ch_input;
     std::vector<float> right_ch_input;
 
-    // Step (1) Prepare the input audio file
-
+    // Read input audio file
     read_wav(audio_input_path, left_ch_input, right_ch_input);
     fprintf(stderr, "Using %s as an audio input file...\n", audio_input_path.c_str());
-
-    const size_t audio_input_per_ch_size = left_ch_input.size();
-
-    if(audio_input_per_ch_size < autoencoder_max_input_per_channel)
-    {
-        // Fill the extra elements with zeros.
-        left_ch_input.resize(autoencoder_max_input_per_channel, 0);
-        right_ch_input.resize(autoencoder_max_input_per_channel, 0);
-    }
-    else if(audio_input_per_ch_size > autoencoder_max_input_per_channel)
-    {
-        // Crop to max size.
-        left_ch_input.resize(autoencoder_max_input_per_channel);
-        right_ch_input.resize(autoencoder_max_input_per_channel);
-    }
-    // remaining case audio_input_ch_size=autoencoder_max_input_per_channel, which require no changes.
-
-    // Pack the data
-    pack_audio_input(left_ch_input, right_ch_input, packed);
-
-    // Step (2) Run the encoder part of the autoencoder
 
     // Create the XNNPACK delegate options
     TfLiteXNNPackDelegateOptions xnnpack_options = TfLiteXNNPackDelegateOptionsDefault();
@@ -308,7 +277,7 @@ static void encode_audio(std::vector<float>& encoded_audio, std::string audio_in
     std::unique_ptr<TfLiteDelegate, TfLiteDelegateDeleter> xnnpack_delegate_fp16(TfLiteXNNPackDelegateCreate(&xnnpack_options));
 
     // Allocate the encoder in case of an input file
-    std::unique_ptr<tflite::FlatBufferModel> autoencoder_encoder_model = tflite::FlatBufferModel::BuildFromFile(encoder_path.c_str());
+    std::unique_ptr<tflite::FlatBufferModel> autoencoder_encoder_model = tflite::FlatBufferModel::BuildFromFile(encoder_model_path.c_str());
     AUDIOGEN_CHECK(autoencoder_encoder_model != nullptr);
 
     // Build the encoder interperter
@@ -339,13 +308,24 @@ static void encode_audio(std::vector<float>& encoded_audio, std::string audio_in
     TfLiteIntArray* autoencoder_encoder_in_dims = autoencoder_encoder_interpreter->tensor(autoencoder_encoder_in_id)->dims;
     TfLiteIntArray* autoencoder_encoder_out_dims = autoencoder_encoder_interpreter->tensor(autoencoder_encoder_out_id)->dims;
 
-    // Initialize the encoder data
-    memcpy(autoencoder_encoder_in_data, packed.data(), get_num_elems(autoencoder_encoder_in_dims) * sizeof(float));
+    // Get the input model size
+    const size_t audio_input_dim0 = get_num_elems(autoencoder_encoder_in_dims);
+
+    // Divided by 2 because we have two channels
+    AUDIOGEN_CHECK(left_ch_input.size() <= audio_input_dim0 / 2);
+    AUDIOGEN_CHECK(right_ch_input.size() <= audio_input_dim0 / 2);
+
+    // Resize if needed and fill with zero the newly added values
+    left_ch_input.resize(audio_input_dim0 / 2, 0);
+    right_ch_input.resize(audio_input_dim0 / 2, 0);
+
+    // Pack the data
+    prepare_encoder_input(left_ch_input, right_ch_input, autoencoder_encoder_in_data, audio_input_dim0);
 
     // Run the encoder
-    start_encoder = time_in_ms();
+    auto start_encoder = time_in_ms();
     AUDIOGEN_CHECK(autoencoder_encoder_interpreter->Invoke() == kTfLiteOk);
-    end_encoder = time_in_ms();
+    auto end_encoder = time_in_ms();
 
     // Copy the output to the output buffer
     const size_t encoder_output_num_elems = get_num_elems(autoencoder_encoder_out_dims);
@@ -431,9 +411,9 @@ static void sampler_ping_pong(float* dit_out_data, float* dit_x_in_data, size_t 
     for(size_t i = 0; i < dit_x_in_sz; i++) {
         dit_out_data[i] = dit_x_in_data[i] - ( cur_t * dit_out_data[i]);
     }
-    
-    float rand_tensor[dit_x_in_sz];
-    fill_random_norm_dist(rand_tensor, dit_x_in_sz, seed);
+
+    std::vector<float> rand_tensor(dit_x_in_sz);
+    fill_random_norm_dist(rand_tensor.data(), dit_x_in_sz, seed);
 
     // x = (1-t_next) * denoised + t_next * torch.randn_like(x)
     for(size_t i = 0; i < dit_x_in_sz; i++) {
@@ -491,15 +471,13 @@ int main(int32_t argc, char** argv) {
 
     // If there is input audio, run the encoder model and release it, to avoid overloading memory
     std::vector<float> encoded_audio;
-    if(!audio_input_path.empty())
-    {
-        if(sigma_max <= 0 || sigma_max >=  1)
-        {
+    if(!audio_input_path.empty()) {
+        if(sigma_max <= 0 || sigma_max >=  1) {
             fprintf(stderr, "When using init audio, noise_level must be between (0,1) \n");
             return EXIT_FAILURE;
         }
 
-       encode_audio(encoded_audio, audio_input_path, autoencoder_encoder_tflite, num_threads);
+       encode_audio(audio_input_path, autoencoder_encoder_tflite, encoded_audio, num_threads);
     }
 
     // ----- Load the models
@@ -621,25 +599,22 @@ int main(int32_t argc, char** argv) {
 
     // ----- Initialize the T and X buffers
     sigma_max = std::min(1.0f, sigma_max);
-    
+
     // Fill x tensor with noise
     const size_t dit_x_num_elems = get_num_elems(dit_x_in_dims);
     fill_random_norm_dist(dit_x_in_data, dit_x_num_elems, seed);
-    
-    if(!audio_input_path.empty())
-    {
-        for(int i = 0; i < dit_x_num_elems; ++i)
-        {
+
+    if(!audio_input_path.empty()) {
+        for(int i = 0; i < dit_x_num_elems; ++i) {
             dit_x_in_data[i] =  encoded_audio[i] * (1 - sigma_max) + dit_x_in_data[i] * sigma_max;
         }
     }
 
     float logsnr_max = k_logsnr_max;
-    if(sigma_max < 1)
-    {
+    if(sigma_max < 1) {
         logsnr_max = std::log(((1-sigma_max)/sigma_max) + 1e-6);
     }
-    
+
     fill_sigmas(t_buffer, logsnr_max, 2.0f, sigma_max);
 
     // Convert the prompt to IDs

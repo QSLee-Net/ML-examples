@@ -74,18 +74,18 @@ class AutoEncoderDecoderModule(torch.nn.Module):
         audio (torch.Tensor): The decoded audio tensor.
     """
 
-    def __init__(self, audoencoder):
+    def __init__(self, autoencoder):
         super(AutoEncoderDecoderModule, self).__init__()
-        self.audoencoder = audoencoder
+        self.autoencoder = autoencoder
 
         # Use float
-        self.audoencoder = (
-            self.audoencoder.to(dtype=torch.float).eval().requires_grad_(False)
+        self.autoencoder = (
+            self.autoencoder.to(dtype=torch.float).eval().requires_grad_(False)
         )
 
     def forward(self, sampled: torch.Tensor):
         dtype = torch.float
-        sampled_uncompressed = self.audoencoder.decode(sampled.to(dtype))
+        sampled_uncompressed = self.autoencoder.decode(sampled.to(dtype))
 
         audio = rearrange(sampled_uncompressed, "b d n -> d (b n)")
 
@@ -113,20 +113,20 @@ class AutoEncoderEncoderModule(torch.nn.Module):
         audio (torch.Tensor): The decoded audio tensor.
     """
 
-    def __init__(self, audoencoder):
+    def __init__(self, autoencoder):
         super(AutoEncoderEncoderModule, self).__init__()
-        self.audoencoder = audoencoder
+        self.autoencoder = autoencoder
 
         # Use float
-        self.audoencoder = (
-            self.audoencoder.to(dtype=torch.float).eval().requires_grad_(False)
+        self.autoencoder = (
+            self.autoencoder.to(dtype=torch.float).eval().requires_grad_(False)
         )
 
         stable_audio_tools.models.bottleneck.vae_sample = vae_sample_updated
 
     def forward(self, sampled: torch.Tensor):
         dtype = torch.float
-        sample_compressed = self.audoencoder.encode(sampled.to(dtype))
+        sample_compressed = self.autoencoder.encode(sampled.to(dtype))
 
         return sample_compressed
 
