@@ -173,3 +173,21 @@ If everything runs successfully, the generated audio will be saved in `.wav` for
 ```bash
 adb pull data/local/tmp/warm_arpeggios_on_house_beats_120bpm_with_drums_effect_99.wav
 ```
+## Using audio input 
+You can pair your text prompt with an audio input to guide the model to your output goals.
+
+Change the style, genre and mood to create variations.
+More info [here](https://stableaudio.com/user-guide/audio-to-audio).
+
+The Audio file should be in Wave format (32-bit Floating-Point PCM), you can convert your file using ffmpeg:
+```bash
+ffmpeg -i input_audio.mp3 -ar 44100 -ac 2 -c:a pcm_f32le -f wav output.wav
+```
+
+Usage:
+```bash
+./audiogen -m . -p "Drums" -t 4 -i input_audio.wav -x 0.6
+```
+
+- **input_audio_path (-i)**: Add input audio file for style transfer
+- **sigma_max (-x)**: A hyper parameter to tweak noise level

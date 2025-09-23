@@ -463,6 +463,11 @@ int main(int32_t argc, char** argv) {
         return EXIT_FAILURE;
     }
 
+    if(sigma_max <= 0 || sigma_max >  1) {
+        fprintf(stderr, "noise_level (sigma_max) must be between (0,1] \n");
+        return EXIT_FAILURE;
+    }
+
     std::string t5_tflite = models_base_path + "/conditioners_float32.tflite";
     std::string dit_tflite = models_base_path + "/dit_model.tflite";
     std::string autoencoder_tflite = models_base_path + "/autoencoder_model.tflite";
@@ -472,11 +477,6 @@ int main(int32_t argc, char** argv) {
     // If there is input audio, run the encoder model and release it, to avoid overloading memory
     std::vector<float> encoded_audio;
     if(!audio_input_path.empty()) {
-        if(sigma_max <= 0 || sigma_max >=  1) {
-            fprintf(stderr, "When using init audio, noise_level must be between (0,1) \n");
-            return EXIT_FAILURE;
-        }
-
        encode_audio(audio_input_path, autoencoder_encoder_tflite, encoded_audio, num_threads);
     }
 
@@ -598,7 +598,6 @@ int main(int32_t argc, char** argv) {
     std::vector<float> t_buffer(num_steps + 1);
 
     // ----- Initialize the T and X buffers
-    sigma_max = std::min(1.0f, sigma_max);
 
     // Fill x tensor with noise
     const size_t dit_x_num_elems = get_num_elems(dit_x_in_dims);
