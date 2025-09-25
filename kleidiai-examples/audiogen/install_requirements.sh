@@ -27,14 +27,14 @@ pip install --no-deps "torch==2.6.0" \
                       "numpy==1.26.4" \
 
 # Packages to convert via onnx 
-pip install --no-deps onnx \
-                      onnxsim \
-                      onnx2tf \
-                      tensorflow \
-                      tf_keras \
-                      onnx_graphsurgeon \
-                      ai_edge_litert \
-                      sng4onnx 
+pip install --no-deps "onnx==1.18.0" \
+                      "onnxsim==0.4.36" \
+                      "onnx2tf==1.27.10" \
+                      "tensorflow==2.19.0" \
+                      "tf_keras==2.19.0" \
+                      "onnx-graphsurgeon==0.5.8" \
+                      "ai_edge_litert" \
+                      "sng4onnx==1.0.4"
 
 echo "Finished installing required packages for AudioGen submodules conversion."
 echo "To start converting the Conditioners, DiT and Autoencoder modules conversion, use the following command:"
