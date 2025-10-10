@@ -73,7 +73,6 @@ def load_model(
 
     model.to(device).eval().requires_grad_(False)
     model = model.to(torch.float)
-    model.pretransform.model_half=False
 
     return model, model_config
 
@@ -132,18 +131,20 @@ class ConditionersModule(torch.nn.Module):
         self,
         sao_t5_cond: torch.nn.Module,
         sao_seconds_total_cond: torch.nn.Module,
+        dtype: torch.dtype = torch.float
     ):
         super().__init__()
         self.sao_t5 = sao_t5_cond
         self.sao_seconds_total_cond = ExportableNumberConditioner(
             sao_seconds_total_cond
         )
+        self.dtype = dtype
 
         # Use float
         self.sao_t5 = (
-            self.sao_t5.to("cpu").to(dtype=torch.float).eval().requires_grad_(False)
+            self.sao_t5.to("cpu").to(dtype).eval().requires_grad_(False)
         )
-        self.sao_seconds_total_cond = self.sao_seconds_total_cond.to(dtype=torch.float)
+        self.sao_seconds_total_cond = self.sao_seconds_total_cond.to(dtype=dtype)
 
     def forward(
         self,
@@ -160,9 +161,9 @@ class ConditionersModule(torch.nn.Module):
             t5_embeddings = t5_embeddings[:, :64, :]
             attention_mask = attention_mask[:, :64]
             # Get the T5 projections
-            t5_proj = self.sao_t5.proj_out(t5_embeddings.float())
-            t5_proj = t5_proj * attention_mask.unsqueeze(-1).float()
-            t5_mask = attention_mask.float()
+            t5_proj = self.sao_t5.proj_out(t5_embeddings).to(dtype=self.dtype)
+            t5_proj = t5_proj * attention_mask.unsqueeze(-1).to(dtype=self.dtype)
+            t5_mask = attention_mask
 
         # Get seconds_total conditioner results
         seconds_total_embedding, seconds_total_mask = self.sao_seconds_total_cond(
@@ -181,7 +182,7 @@ class ConditionersModule(torch.nn.Module):
         cross_attention_masks = torch.cat(
             [
                 t5_mask,
-                seconds_total_mask,
+                seconds_total_mask.to(torch.long),
             ],
             dim=1,
         )
@@ -198,7 +199,7 @@ class ConditionersModule(torch.nn.Module):
 
         return cross_attention_input, cross_attention_masks, global_cond
 
-def get_conditioners_module(model):
+def get_conditioners_module(model, dtype = torch.float):
     """
     Wrap both the T5 encoder and seconds_total conditioner in a single module.
     """
@@ -209,9 +210,10 @@ def get_conditioners_module(model):
     return ConditionersModule(
         sao_t5_cond=sao_t5_cond,
         sao_seconds_total_cond=sao_seconds_total_cond,
+        dtype=dtype
     )
 
-def get_conditioners_example_input(seconds_total: float, seq_length: int):
+def get_conditioners_example_input(seconds_total: float, seq_length: int, dtype=torch.float):
     """Provide example input tensors for the AudioGen Conditioners submodule.
     Args:
         seconds_total (float): The total seconds for the audio.
@@ -237,7 +239,7 @@ def get_conditioners_example_input(seconds_total: float, seq_length: int):
     attention_mask = encoded["attention_mask"]
 
     # Create the seconds_total tensor
-    seconds_total = torch.tensor([seconds_total], dtype=torch.float)
+    seconds_total = torch.tensor([seconds_total], dtype=dtype)
 
     return (
         input_ids,
@@ -246,25 +248,25 @@ def get_conditioners_example_input(seconds_total: float, seq_length: int):
     )
 
 ## ----------------- Utility Functions DiT -------------------
-def get_dit_example_input_tuple(dtype=torch.float):
-    """Provide example input tensors for the DiT model.
+def get_dit_example_input_mapping(dtype=torch.float):
+    """Provide example input tensors for the DiT model as a dictionary.
     Args:
         dtype (torch.dtype): The data type for the input tensors.
     Returns:
-        tuple: A tuple containing the example input tensors for the DiT model.
+        dict: A dictionary containing the example input tensors for the DiT model.
         x (torch.Tensor): The input tensor for the DiT model.
         t (torch.Tensor): The time tensor for the DiT model.
         cross_attn_cond (torch.Tensor): The cross attention conditioning tensor for the DiT model. Output of the Conditioner T5 Encoder.
         global_cond (torch.Tensor): The global conditioning tensor for the DiT model. Output of the Conditioner Number Encoder.
     """
-    return (
-        torch.rand(size=(1, 64, 256), dtype=dtype, requires_grad=False),  # x
-        torch.tensor([0.154], dtype=dtype, requires_grad=False),  # t
-        torch.rand(
+    return {
+        "x": torch.rand(size=(1, 64, 256), dtype=dtype, requires_grad=False),  # x
+        "t": torch.tensor([0.154], dtype=dtype, requires_grad=False),  # t
+        "cross_attn_cond": torch.rand(
             size=(1, 65, 768), dtype=dtype, requires_grad=False
         ),  # cross_attn_cond
-        torch.rand(size=(1, 768), dtype=dtype, requires_grad=False),  # global_cond
-    )
+        "global_cond": torch.rand(size=(1, 768), dtype=dtype, requires_grad=False),  # global_cond
+    }
 
 def get_dit_module(model, dtype = torch.float32):
     dit_model = model.model
@@ -279,7 +281,7 @@ def get_autoencoder_decoder_module(model):
 
 def get_autoencoder_decoder_example_input(dtype=torch.float):
     """Get example input for the AutoEncoder module."""
-    return (torch.rand((1, 64, 256), dtype=dtype),)
+    return (torch.rand((1, 64, 256), dtype=torch.float),)
 
 class AutoEncoderDecoderModule(torch.nn.Module):
     """Wrap the AutoEncoder Module. Takes the AutoEncoder and returns the audio.
@@ -293,15 +295,15 @@ class AutoEncoderDecoderModule(torch.nn.Module):
         super(AutoEncoderDecoderModule, self).__init__()
         self.autoencoder = autoencoder
 
-        # Use float
+        # Use Half
         self.autoencoder = (
-            self.autoencoder.to(dtype=torch.float).eval().requires_grad_(False)
+            self.autoencoder.to(dtype=torch.half).eval().requires_grad_(False)
         )
 
     def forward(self, sampled: torch.Tensor):
-        dtype = torch.float
-        sampled_uncompressed = self.autoencoder.decode(sampled.to(dtype))
+        sampled = sampled.to(torch.half)
+        sampled_uncompressed = self.autoencoder.decode(sampled)
 
         audio = rearrange(sampled_uncompressed, "b d n -> d (b n)")
-
+        audio = audio.to(torch.float)
         return audio
