@@ -79,9 +79,9 @@ def load_model(
 
 ## ----------------- Conditioners Utility Functions -------------------
 def get_conditioners(model):
-    """Load the conditioners module from the AudioGen model.
+    """Load the conditioners module from Stable Audio Open Small model.
     Args:
-        model: The AudioGen model.
+        model: Stable Audio Open Small model.
     Returns:
         sao_t5_cond: The T5 encoder.
         sao_seconds_total_cond: The seconds_total conditioner.

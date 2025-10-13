@@ -22,6 +22,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Set options for executorch build.
 option(EXECUTORCH_BUILD_EXTENSION_DATA_LOADER "" ON)
+option(EXECUTORCH_BUILD_EXTENSION_NAMED_DATA_MAP "" ON)
 option(EXECUTORCH_BUILD_EXTENSION_MODULE "" ON)
 option(EXECUTORCH_BUILD_EXTENSION_FLAT_TENSOR "" ON)
 option(EXECUTORCH_BUILD_EXTENSION_TENSOR "" ON)
@@ -45,13 +46,11 @@ if(NOT ET_SRC_PATH)
   include(FetchContent)
 
   # ExecuTorch requires the directory name to be 'executorch'
-
   set(EXECUTORCH_SOURCE_DIR ${CMAKE_SOURCE_DIR}/executorch)
   FetchContent_Declare(executorch
     SOURCE_DIR ${EXECUTORCH_SOURCE_DIR}
-    # For Sine support in autoencoder
-    GIT_REPOSITORY https://github.com/GregoryComer/executorch.git
-    GIT_TAG 68f6f0e74ff82173889446ae894c4685dad77da2
+    GIT_REPOSITORY https://github.com/pytorch/executorch.git
+    GIT_TAG d00279d4ab19bf38f7b130f66be11352802ab7cc
   )
   FetchContent_Populate(executorch)
 
@@ -76,9 +75,9 @@ add_subdirectory(${EXECUTORCH_SOURCE_DIR} ${CMAKE_BINARY_DIR}/executorch)
 # Add tokenizers from ExecuTorch extensions
 add_subdirectory(${EXECUTORCH_SOURCE_DIR}/extension/llm/tokenizers ${CMAKE_BINARY_DIR}/tokenizers)
 
-add_executable(sao_runner main.cpp)
+add_executable(audiogen main.cpp)
 
 target_link_libraries(
-  sao_runner PUBLIC executorch optimized_native_cpu_ops_lib
+  audiogen PUBLIC executorch optimized_native_cpu_ops_lib
                            xnnpack_backend extension_module_static extension_tensor tokenizers
 )

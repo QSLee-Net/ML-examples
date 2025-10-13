@@ -29,7 +29,7 @@ The Stable Audio Open Small Model is made of three submodules: Conditioners (Tex
 ## Setup
 
 ### Step 1
-Clone this repository in your terminal, then navigate to `kleidiai-examples/et-audiogen/` directory.
+Clone this repository in your terminal, then navigate to `kleidiai-examples/audiogen-et/` directory.
 
 ### Step 2
 Create a workspace directory for managing the dependencies and repositories. Export the WORKSPACE variable to point to this directory, which you will use in the following steps:

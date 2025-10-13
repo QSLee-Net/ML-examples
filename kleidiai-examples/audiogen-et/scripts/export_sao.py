@@ -11,7 +11,7 @@ import os
 
 import torch
 
-from .model import (get_dit_module, load_model,
+from model import (get_dit_module, load_model,
                     get_autoencoder_decoder_module,
                     get_autoencoder_decoder_example_input,
                     get_conditioners_module,
@@ -75,7 +75,7 @@ def export_dit(model, output_path) -> None:
         )
         dit_model = unwrap_tensor_subclass(dit_model)
 
-    print("quantized model:", dit_model)
+    logging.info("quantized model: %s", dit_model)
 
     # Export the model to ExecuTorch format
     exported_program: ExportedProgram = torch.export.export(dit_model, args=(), kwargs=dit_example_mapping, dynamic_shapes=None)
@@ -96,8 +96,10 @@ def export_autoencoder(model, output_path) -> None:
     # Load the AutoEncoder part of the model
     logging.info("Starting AutoEncoder Decoder conversion...\n")
 
-    # Export the model in fp16, however the input/output is still fp32 for easy of use on application side
-    # Casting to fp16 is done inside the model
+    # Export the model in fp16, however the input/output is still fp32.
+    # The reason for keeping the input and output in fp32 is that this is the data type on the user side.
+    # Therefore, by keeping the format in fp32, we remove the necessity of the data type conversation on the user space,
+    # which can slow down the performance if not carefully optimized because output data is quite large.
     autoencoder_decoder_example_input = get_autoencoder_decoder_example_input(dtype=torch.float)
     model.pretransform.model_half=True
     model = model.to(torch.half)

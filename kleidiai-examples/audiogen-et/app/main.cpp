@@ -30,6 +30,7 @@
 #include <chrono>
 #include <random>
 #include <fstream>
+#include <unistd.h>
 
 using executorch::aten::ScalarType;
 using executorch::extension::Module;
@@ -48,6 +49,8 @@ constexpr size_t k_t5_attnmask_in_idx = 1;
 constexpr size_t k_t5_audio_len_in_idx = 2;
 
 constexpr size_t k_dit_t_in_idx = 1;
+constexpr size_t k_dit_crossattn_in_idx = 0;
+constexpr size_t k_dit_globalcond_in_idx = 2;
 
 // -- Fill sigmas params
 constexpr float k_logsnr_max = -6.0f;
@@ -182,12 +185,12 @@ static void save_as_wav(const std::string& path, const float* left_ch, const flo
     out_file.close();
 }
 
-std::vector<executorch::aten::SizesType> get_tensor_dims(const TensorInfo& tensor_info) {
+static std::vector<executorch::aten::SizesType> get_tensor_dims(const TensorInfo& tensor_info) {
     std::vector<executorch::aten::SizesType> tensor_dims(tensor_info.sizes().begin(), tensor_info.sizes().end());
     return tensor_dims;
 }
 
-size_t get_tensor_numel(const std::vector<executorch::aten::SizesType>& tensor_dims) {
+static size_t get_num_elems(const std::vector<executorch::aten::SizesType>& tensor_dims) {
     size_t numel = 1;
     for (const auto& dim : tensor_dims) {
         numel *= dim;
@@ -195,7 +198,7 @@ size_t get_tensor_numel(const std::vector<executorch::aten::SizesType>& tensor_d
     return numel;
 }
 
-void dry_run(std::unique_ptr<executorch::extension::Module>& module) {
+static void dry_run(std::unique_ptr<executorch::extension::Module>& module) {
 
     // Dummy run for a module
     // -------------------------
@@ -233,19 +236,19 @@ int main(int32_t argc, char** argv) {
     size_t cpu_threads           = -1;
 
     // Optional arguments
-    std::string output_path      = "";
+    std::string output_file      = "";
     size_t seed                  = k_seed_default;
     size_t num_steps             = k_num_steps_default;
     float audio_len_sec          = static_cast<float>(k_audio_len_sec_default);
     bool  run_dummy_run          = false;
 
-    int opt;
+    int32_t opt;
     while ((opt = getopt(argc, argv, "m:p:t:s:n:o:l:d:h")) != -1) {
         switch (opt) {
             case 'm': models_base_path = optarg; break;
             case 'p': prompt           = optarg; break;
             case 't': cpu_threads      = std::stoull(optarg); break;
-            case 'o': output_path      = optarg; break;
+            case 'o': output_file      = optarg; break;
             case 's': seed             = std::stoull(optarg); break;
             case 'n': num_steps        = std::stoull(optarg); break;
             case 'l': audio_len_sec    = static_cast<float>(std::stoull(optarg)); break;
@@ -368,7 +371,7 @@ int main(int32_t argc, char** argv) {
 
     // Prepare length tensor data
     auto t5_input_len_tensor_dims = get_tensor_dims(t5_forward_meta.input_tensor_meta(k_t5_audio_len_in_idx).get());
-    const size_t t5_length_in_sz = get_tensor_numel(t5_input_len_tensor_dims);
+    const size_t t5_length_in_sz = get_num_elems(t5_input_len_tensor_dims);
     AUDIOGEN_CHECK(t5_length_in_sz == 1);
 
     // Prepare T5 tensors
@@ -395,16 +398,15 @@ int main(int32_t argc, char** argv) {
     }
 
     // Get t5 output tensors
-    const auto cross_attn_cond_tensor = condintioners_result->at(0).toTensor();
-    const auto cross_attn_mask_tensor = condintioners_result->at(1).toTensor();
-    const auto global_cond_tensor     = condintioners_result->at(2).toTensor();
+    const auto cross_attn_cond_tensor = condintioners_result->at(k_dit_crossattn_in_idx).toTensor();
+    const auto global_cond_tensor     = condintioners_result->at(k_dit_globalcond_in_idx).toTensor();
 
     // ----- Prepare DiT input tensors
     // ----------------------------------
 
     // Prepare the X input tensor
     const auto dit_x_tensor_dims = get_tensor_dims(dit_forward_meta.input_tensor_meta(k_t5_ids_in_idx).get());
-    const size_t x_in_sz = get_tensor_numel(dit_x_tensor_dims);
+    const size_t x_in_sz = get_num_elems(dit_x_tensor_dims);
 
     std::vector<float> x_data(x_in_sz, 0.0f);
     fill_random_norm_dist(x_data.data(), x_data.size(), seed);
@@ -415,7 +417,7 @@ int main(int32_t argc, char** argv) {
 
     // Prepare Sigmas values
     const auto dit_t_tensor_dims = get_tensor_dims(dit_forward_meta.input_tensor_meta(k_dit_t_in_idx).get());
-    const size_t t_in_sz = get_tensor_numel(dit_t_tensor_dims);
+    const size_t t_in_sz = get_num_elems(dit_t_tensor_dims);
     AUDIOGEN_CHECK(t_in_sz == 1);
 
     std::vector<float> t_buffer(num_steps + 1);
@@ -466,8 +468,14 @@ int main(int32_t argc, char** argv) {
     const size_t output_waveform_sz_per_channel = output_waveform_tensor.numel() / 2;
     const auto left_ch = output_waveform_data;
     const auto right_ch = output_waveform_data + output_waveform_sz_per_channel;
-    save_as_wav("output.wav", left_ch, right_ch, output_waveform_sz_per_channel);
-    ET_LOG(Info, "Output waveform saved to output.wav");
+
+    // If output filename empty -> filename = <prompt>_<seed>.wav
+    if (output_file.empty()) {
+        output_file = get_filename(prompt, seed);
+    }
+
+    save_as_wav(output_file, left_ch, right_ch, output_waveform_sz_per_channel);
+    ET_LOG(Info, "Output saved to %s", output_file.c_str());
 
     // Print total execution time
     auto t5_exec_time = t5_end - t5_start;
