@@ -50,7 +50,7 @@ if(NOT ET_SRC_PATH)
   FetchContent_Declare(executorch
     SOURCE_DIR ${EXECUTORCH_SOURCE_DIR}
     GIT_REPOSITORY https://github.com/pytorch/executorch.git
-    GIT_TAG d00279d4ab19bf38f7b130f66be11352802ab7cc
+    GIT_TAG 57a79037b1973836705527a59c789de7a0348152
   )
   FetchContent_Populate(executorch)
 

@@ -25,10 +25,10 @@ source .venv/bin/activate
 ```
 
 #### Step 2
-Clone ExecuTorch repository and run the installation script (tested on `d00279d4ab19bf38f7b130f66be11352802ab7cc`)
+Clone ExecuTorch repository and run the installation script (tested on `57a79037b1973836705527a59c789de7a0348152`)
 ```bash
 git clone https://github.com/pytorch/executorch.git
-git checkout d00279d4ab19bf38f7b130f66be11352802ab7cc
+git checkout 57a79037b1973836705527a59c789de7a0348152
 cd executorch
 bash ./install_executorch.sh
 ```
