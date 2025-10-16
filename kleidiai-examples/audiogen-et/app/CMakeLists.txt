@@ -30,6 +30,10 @@ option(EXECUTORCH_BUILD_KERNELS_OPTIMIZED "" ON)
 option(EXECUTORCH_BUILD_XNNPACK "" ON)
 option(EXECUTORCH_ENABLE_LOGGING "" ON)
 
+option(ENABLE_F16_IGEMM_SME2_EXPERIMENTAL "" OFF)
+set(SME2_GIT_BRANCH "pull/8687/head:f16_igemm")
+set(SME2_GIT_HASH "4ee40b90b9")
+
 # Disable tests for ExecuTorch
 set(BUILD_TESTING OFF)
 
@@ -53,6 +57,35 @@ if(NOT ET_SRC_PATH)
     GIT_TAG 57a79037b1973836705527a59c789de7a0348152
   )
   FetchContent_Populate(executorch)
+
+  if(ENABLE_F16_IGEMM_SME2_EXPERIMENTAL)
+    message(STATUS "Enabling SME2 IGEMM experimental optimizations in ExecuTorch")
+    set(XNNPACK_ENABLE_ARM_SME2 ON CACHE BOOL "" FORCE)
+
+    # Find Git executable
+    find_program(GIT_EXE git REQUIRED)
+
+    # Fetch the specific branch with SME2 IGEMM optimizations
+    execute_process(
+      COMMAND ${GIT_EXE} fetch origin ${SME2_GIT_BRANCH}
+      WORKING_DIRECTORY ${EXECUTORCH_SOURCE_DIR}/backends/xnnpack/third-party/XNNPACK/
+      RESULT_VARIABLE result
+    )
+    if(NOT result EQUAL 0)
+      message(FATAL_ERROR "Failed to fetch SME2 experimental optimizations in XNNPACK")
+    endif()
+
+    # Checkout SME2 IGEMM commit
+    execute_process(
+      COMMAND ${GIT_EXE} checkout ${SME2_GIT_HASH}
+      WORKING_DIRECTORY ${EXECUTORCH_SOURCE_DIR}/backends/xnnpack/third-party/XNNPACK/
+      RESULT_VARIABLE result
+    )
+    if(NOT result EQUAL 0)
+      message(FATAL_ERROR "Failed to checkout SME2 experimental optimizations in XNNPACK")
+    endif()
+
+  endif()
 
 else()
   set(EXECUTORCH_SOURCE_DIR ${ET_SRC_PATH})
