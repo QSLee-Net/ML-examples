@@ -54,7 +54,7 @@ if(NOT ET_SRC_PATH)
   FetchContent_Declare(executorch
     SOURCE_DIR ${EXECUTORCH_SOURCE_DIR}
     GIT_REPOSITORY https://github.com/pytorch/executorch.git
-    GIT_TAG 57a79037b1973836705527a59c789de7a0348152
+    GIT_TAG v1.0.0
   )
   FetchContent_Populate(executorch)
 
@@ -89,17 +89,6 @@ if(NOT ET_SRC_PATH)
 
 else()
   set(EXECUTORCH_SOURCE_DIR ${ET_SRC_PATH})
-endif()
-
-message(STATUS "---- Running ./install_executorch.sh")
-execute_process(
-  COMMAND ./install_executorch.sh
-  WORKING_DIRECTORY ${EXECUTORCH_SOURCE_DIR}
-  RESULT_VARIABLE result
-)
-
-if(NOT result EQUAL 0)
-  message(FATAL_ERROR "Failed to run ./install_executorch.sh")
 endif()
 
 # Add Executorch source directory

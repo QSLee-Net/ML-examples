@@ -34,13 +34,19 @@ source .venv/bin/activate
 ```
 
 #### Step 2
+If you haven't installed ExecuTorch package, it should be installed this way:
+```bash
+pip install executorch==1.0.0
+```
+
+#### Step 3
 Navigate to the `audiogen-et/app/` folder. Set the `EXECUTORCH_MODELS_PATH` environment variable to the path where your Stable Audio Open Small models exported to ExecuTorch are located:
 
 ```bash
 export EXECUTORCH_MODELS_PATH=<path_to_your_executorch_models>
 ```
 
-#### Step 3
+#### Step 4
 Build the audiogen application. Inside the `app` directory, create the `build` folder and navigate into it:
 
 ```bash
@@ -58,7 +64,7 @@ Then, build the application:
 make -j
 ```
 
-#### Step 4
+#### Step 5
 Since the tokenizer used in the audiogen application is based on <strong>SentencePiece</strong>, you’ll need to download the `spiece.model` file from: https://huggingface.co/google-t5/t5-base/tree/main
 and add it to your `$EXECUTORCH_MODELS_PATH`.
 
@@ -91,13 +97,19 @@ source .venv/bin/activate
 ```
 
 #### Step 2
+If you haven't installed ExecuTorch package, it should be installed this way:
+```bash
+pip install executorch==1.0.0
+```
+
+#### Step 3
 Navigate to the `audiogen-et/app/` folder. Set the `EXECUTORCH_MODELS_PATH` environment variable to the path where your Stable Audio Open Small models exported to ExecuTorch are located:
 
 ```bash
 export EXECUTORCH_MODELS_PATH=<path_to_your_executorch_models>
 ```
 
-#### Step 3
+#### Step 4
 If you haven't installed the Android™ NDK r27c yet, download and extract the Android™ NDK r27c in the `app` directory:
 
 ```bash
@@ -117,7 +129,7 @@ export NDK_PATH=$(pwd)/android-ndk-r27c
 ```
 > If you extracted the Android™ NDK to a different directory, be sure to update `NDK_PATH` accordingly.
 
-#### Step 4
+#### Step 5
 
 Build the audiogen application. Inside the `app` directory, create the `build` folder and navigate into it:
 
@@ -135,7 +147,7 @@ Then, build the application:
 ```bash
 make -j
 ```
-#### Step 5
+#### Step 6
 At this point, you are ready to push the binaries to your Android™ device and run the audiogen application. To do so, use the `adb` tool to push all necessary files into `/data/local/tmp/app`
 
 ```bash
