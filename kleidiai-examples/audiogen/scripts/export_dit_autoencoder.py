@@ -27,25 +27,25 @@ DEVICE = torch.device("cpu")
 logging.basicConfig(level=logging.INFO)
 
 ## ----------------- Utility Functions DiT -------------------
-def get_dit_example_input_tuple(dtype=torch.float):
-    """Provide example input tensors for the DiT model.
+def get_dit_example_input_mapping(dtype=torch.float):
+    """Provide example input tensors for the DiT model as a dictionary.
     Args:
         dtype (torch.dtype): The data type for the input tensors.
     Returns:
-        tuple: A tuple containing the example input tensors for the DiT model.
+        dict: A dictionary containing the example input tensors for the DiT model.
         x (torch.Tensor): The input tensor for the DiT model.
         t (torch.Tensor): The time tensor for the DiT model.
         cross_attn_cond (torch.Tensor): The cross attention conditioning tensor for the DiT model. Output of the Conditioner T5 Encoder.
         global_cond (torch.Tensor): The global conditioning tensor for the DiT model. Output of the Conditioner Number Encoder.
     """
-    return (
-        torch.rand(size=(1, 64, 256), dtype=dtype, requires_grad=False),  # x
-        torch.tensor([0.154], dtype=dtype, requires_grad=False),  # t
-        torch.rand(
+    return {
+        "x": torch.rand(size=(1, 64, 256), dtype=dtype, requires_grad=False),  # x
+        "t": torch.tensor([0.154], dtype=dtype, requires_grad=False),  # t
+        "cross_attn_cond": torch.rand(
             size=(1, 65, 768), dtype=dtype, requires_grad=False
         ),  # cross_attn_cond
-        torch.rand(size=(1, 768), dtype=dtype, requires_grad=False),  # global_cond
-    )
+        "global_cond": torch.rand(size=(1, 768), dtype=dtype, requires_grad=False),  # global_cond
+    }
 
 
 ## ----------------- Utility Functions AutoEncoder -------------------
@@ -98,7 +98,7 @@ def vae_sample_updated(mean, scale):
 
     # "randn_like" was causing failures while exporting the model:
     # latents = torch.randn_like(mean) * stdev + mean
-    rand = torch.randn(mean.size()) 
+    rand = torch.randn(mean.size())
     latents = rand * stdev + mean
 
     kl = (mean * mean + var - logvar - 1).sum(1).mean()
@@ -166,7 +166,7 @@ def export_audiogen(args) -> None:
     logging.info("Starting DiT Model conversion to LiteRT format...\n")
     dit_model = model.model
     dit_model = dit_model.to(dtype).eval().requires_grad_(False)
-    dit_model_example_input = get_dit_example_input_tuple(dtype)
+    dit_model_example_input = get_dit_example_input_mapping(dtype)
     logging.info("Exporting the DiT model...")
 
     # # Workaround for some issue in LiteRT that occurs at runtime
@@ -179,7 +179,7 @@ def export_audiogen(args) -> None:
 
     # Export the DiT to LiteRT format
     edge_model = ai_edge_torch.convert(
-        dit_model, dit_model_example_input, quant_config=quant_config_audiogen_int8
+        dit_model, sample_args=None, sample_kwargs=dit_model_example_input, quant_config=quant_config_audiogen_int8
     )
     edge_model.export("./dit_model.tflite")
     logging.info("DiT model has been saved to %s/dit_model.tflite")
@@ -224,17 +224,17 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-m", 
-        "--model_config", 
+        "-m",
+        "--model_config",
         type=str,
         help="Path to model config",
         required=True
     )
     parser.add_argument(
-        "-p", 
-        "--ckpt_path", 
+        "-p",
+        "--ckpt_path",
         type=str,
-        help="Path to model checkpoint", 
+        help="Path to model checkpoint",
         required=True
     )
     export_audiogen(parser.parse_args())
