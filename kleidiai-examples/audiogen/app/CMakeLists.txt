@@ -26,18 +26,18 @@ endif()
 if(NOT TF_SRC_PATH)
   include(FetchContent)
 
-  FetchContent_Declare( 
+  FetchContent_Declare(
     tensorflow_src
     GIT_REPOSITORY https://github.com/tensorflow/tensorflow.git
-    GIT_TAG 84dd28bbc29d75e6a6d917eb2998e4e8ea90ec56
+    GIT_TAG 3c9e7b2d24bf422e86eff4cff98440ddfdd369cc
   )
 
   FetchContent_MakeAvailable(tensorflow_src)
 
-  set(TENSORFLOW_SOURCE_DIR ${tensorflow_src_SOURCE_DIR})
+  set(TENSORFLOW_SOURCE_DIR ${tensorflow_src_SOURCE_DIR} CACHE STRING "" FORCE)
 
 else()
-  set(TENSORFLOW_SOURCE_DIR ${TF_SRC_PATH})
+  set(TENSORFLOW_SOURCE_DIR ${TF_SRC_PATH} CACHE STRING "" FORCE)
 endif()
 
 set(FLATBUFFERS_SOURCE_DIR ${TENSORFLOW_SOURCE_DIR}/tensorflow/lite/tools/cmake/native_tools/flatbuffers)
@@ -95,12 +95,6 @@ file(REMOVE ${FLATBUFFERS_BIN_DIR}/_deps/flatbuffers-build/flatc "")
 
 add_dependencies(tensorflow-lite flatc_build)
 
-target_compile_definitions(tensorflow-lite PRIVATE
-  TF_MAJOR_VERSION=0
-  TF_MINOR_VERSION=0
-  TF_PATCH_VERSION=0
-  TF_VERSION_SUFFIX=""
-)
 
 # Include headers
 target_include_directories(audiogen PRIVATE
